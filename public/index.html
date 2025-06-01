@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chatting App</title>
+    <style>
+      /* 공통 리셋 */
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body {
+        height: 100%;
+        font-family: sans-serif;
+      }
+
+      /* 채팅 래퍼 */
+      .chat-wrapper {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        max-width: 600px;
+        margin: 0 auto;
+        background: #e0f7ff;
+        border: 1px solid #ccc;
+        border-radius: 2px;
+      }
+
+      /* 헤더 */
+      .chat-header {
+        flex: 0 0 auto;
+        padding: 1rem;
+        background: #4a90e2;
+        color: #fff;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      /* 메시지 리스트 */
+      .chat-messages {
+        flex: 1 1 auto;
+        list-style: none;
+        padding: 1rem;
+        overflow-y: auto;
+        background: #fff;
+        display: flex;
+        flex-direction: column;
+      }
+      .chat-messages li {
+        margin-bottom: 0.5rem;
+        padding: 0.5rem 1rem;
+        max-width: 80%;
+        word-break: break-all;
+        border-radius: 12px;
+        display: inline-block;
+      }
+
+      /* 내 메시지 */
+      .my-message {
+        background: #dcf8c6;
+        align-self: flex-end;
+      }
+
+      /* 상대 메시지 */
+      .other-message {
+        background: #fff;
+        border: 1px solid #eee;
+        align-self: flex-start;
+      }
+
+      /* 시스템 메시지 (가운데) */
+      .system-message {
+        background: none;
+        color: #888;
+        font-size: 0.9rem;
+        text-align: center;
+        align-self: center;
+        padding: 0.2rem;
+      }
+
+      /* 입력 폼 */
+      .chat-form,
+      .upload-form {
+        flex: 0 0 auto;
+        display: flex;
+        padding: 0.5rem;
+        background: #eee;
+      }
+      .chat-form input {
+        flex: 1;
+        padding: 0.5rem;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+      }
+      .upload-form input[type="file"] {
+        flex: 1;
+      }
+
+      /* 버튼 */
+      .btn {
+        margin-left: 0.5rem;
+        padding: 0.5rem 1rem;
+        border: none;
+        background: #4a90e2;
+        color: #fff;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+
+      /* 이미지 */
+      .chat-image {
+        max-width: 100%;
+        margin-top: 0.5rem;
+        border-radius: 4px;
+        display: block;
+      }
+
+      /* 반응형 */
+      @media (max-width: 480px) {
+        .chat-header h1 {
+          font-size: 1.2rem;
+        }
+        .btn {
+          padding: 0.4rem 0.8rem;
+          font-size: 0.9rem;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="chat-wrapper">
+      <header class="chat-header">
+        <h1>Chatting App</h1>
+        <button id="viewFileListButton" class="btn">📄 파일 목록</button>
+      </header>
+
+      <ul id="messages" class="chat-messages"></ul>
+
+      <form id="messageForm" class="chat-form">
+        <input
+          id="messageInput"
+          type="text"
+          placeholder="메시지를 입력하세요..."
+          autocomplete="off"
+        />
+        <button type="submit" class="btn">전송</button>
+      </form>
+
+      <form id="uploadForm" class="upload-form" enctype="multipart/form-data">
+        <input type="file" id="fileInput" name="file" />
+        <button type="submit" class="btn">업로드</button>
+      </form>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+      const socket = io();
+
+      // 사용자 이름
+      const username = prompt("사용자 이름을 입력하세요:") || "익명";
+      socket.emit("setUsername", username);
+
+      // 텍스트 메시지 전송
+      document.getElementById("messageForm").addEventListener("submit", (e) => {
+        e.preventDefault();
+        const msg = document.getElementById("messageInput").value.trim();
+        if (!msg) return;
+        socket.emit("chat message", msg);
+        document.getElementById("messageInput").value = "";
+      });
+
+      // 텍스트 수신
+      socket.on("chat message", (data) => {
+        const li = document.createElement("li");
+        if (data.username === "system") {
+          li.classList.add("system-message");
+          li.textContent = data.message;
+        } else if (data.username === username) {
+          li.classList.add("my-message");
+          li.textContent = data.message;
+        } else {
+          li.classList.add("other-message");
+          li.textContent = `${data.username}: ${data.message}`;
+        }
+        const list = document.getElementById("messages");
+        list.appendChild(li);
+        list.scrollTop = list.scrollHeight;
+      });
+
+      // 파일 업로드
+      document.getElementById("uploadForm").addEventListener("submit", (e) => {
+        e.preventDefault();
+        const file = document.getElementById("fileInput").files[0];
+        if (!file) return;
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("username", username);
+        fetch("/upload", { method: "POST", body: fd }).catch(console.error);
+      });
+
+      // 파일 업로드 알림
+      socket.on("file uploaded", (data) => {
+        const li = document.createElement("li");
+
+        if (data.username === username) {
+          // 내가 올린 파일 → 오른쪽 말풍선
+          li.classList.add("my-message");
+          if (data.filetype === "image") {
+            const img = document.createElement("img");
+            img.src = `/uploads/${data.filename}`;
+            img.className = "chat-image";
+            li.appendChild(img);
+          } else {
+            const a = document.createElement("a");
+            a.href = `/uploads/${encodeURIComponent(data.filename)}`;
+            a.textContent = data.filename;
+            a.target = "_blank";
+            li.appendChild(a);
+          }
+        } else {
+          // 다른 사람이 올린 파일 → 시스템 메시지(가운데)
+          li.classList.add("system-message");
+          li.textContent = `${data.username}님이 파일을 업로드했습니다.`;
+        }
+
+        const list = document.getElementById("messages");
+        list.appendChild(li);
+        list.scrollTop = list.scrollHeight;
+      });
+
+      // 파일 목록 열기
+      document
+        .getElementById("viewFileListButton")
+        .addEventListener("click", () => {
+          window.open("/filelist.html", "_blank");
+        });
+    </script>
+  </body>
+</html>
